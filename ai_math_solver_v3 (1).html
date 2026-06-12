@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Math & Logic Solver</title>
+  <style>
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --surface2: #22222e;
+      --border: #2e2e3e;
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --text: #e2e2f0;
+      --text2: #9090b0;
+      --green: #22d3a0;
+      --red: #ff6b6b;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* TOP BAR */
+    #topbar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 20px; background: var(--surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    #topbar h1 { font-size: 1.1rem; font-weight: 700; color: var(--accent2); flex: 1; }
+    #topbar .badge { font-size: 0.7rem; background: var(--accent); color: #fff; padding: 2px 8px; border-radius: 20px; }
+
+    /* MAIN LAYOUT */
+    #main { display: flex; flex: 1; overflow: hidden; }
+
+    /* SIDEBAR CONFIG */
+    #sidebar {
+      width: 300px; background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0;
+      transition: width 0.3s;
+    }
+    #sidebar.collapsed { width: 0; overflow: hidden; }
+    #sidebar-inner { padding: 16px; min-width: 300px; }
+    .section-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text2); margin: 16px 0 8px; }
+    .section-title:first-child { margin-top: 0; }
+
+    /* FORM CONTROLS */
+    label { font-size: 0.82rem; color: var(--text2); display: block; margin-bottom: 4px; }
+    input[type=text], input[type=password], select, textarea {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 0.85rem;
+      outline: none; transition: border 0.2s;
+    }
+    input[type=text]:focus, input[type=password]:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    .form-group { margin-bottom: 12px; }
+    .range-row { display: flex; align-items: center; gap: 8px; }
+    .range-row input[type=range] { flex: 1; accent-color: var(--accent); }
+    .range-val { min-width: 36px; text-align: right; font-size: 0.82rem; color: var(--accent2); }
+
+    /* BUTTONS */
+    button { cursor: pointer; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 600; transition: all 0.15s; }
+    .btn-primary { background: var(--accent); color: #fff; padding: 9px 18px; }
+    .btn-primary:hover { background: #7c73ff; }
+    .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text2); padding: 7px 14px; }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent2); }
+    .btn-danger { background: transparent; border: 1px solid var(--border); color: var(--red); padding: 7px 14px; }
+    .btn-icon { background: transparent; color: var(--text2); padding: 6px; font-size: 1.1rem; }
+    .btn-icon:hover { color: var(--accent2); }
+
+    #btn-connect { width: 100%; margin-top: 4px; }
+    #api-status { font-size: 0.78rem; text-align: center; margin-top: 6px; min-height: 18px; }
+    .status-ok { color: var(--green); } .status-err { color: var(--red); }
+
+    /* SYSTEM PROMPT */
+    #system-prompt { height: 90px; resize: vertical; font-size: 0.8rem; }
+
+    /* PRESET SYSTEM PROMPTS */
+    .preset-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .preset-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); font-size: 0.72rem; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+    .preset-btn:hover { border-color: var(--accent); color: var(--accent2); }
+
+    /* CHAT AREA */
+    #chat-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    #messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+    #messages::-webkit-scrollbar { width: 6px; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* MESSAGE BUBBLES */
+    .msg { display: flex; gap: 12px; max-width: 80%; animation: fadeIn 0.2s; }
+    .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+    .msg.assistant { align-self: flex-start; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .msg-avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+    .msg.user .msg-avatar { background: var(--accent); }
+    .msg.assistant .msg-avatar { background: var(--surface2); border: 1px solid var(--border); }
+    .msg-body { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; font-size: 0.88rem; line-height: 1.6; }
+    .msg.user .msg-body { background: var(--accent); border-color: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+    .msg.assistant .msg-body { border-bottom-left-radius: 4px; }
+    .msg-body pre { background: #111; border-radius: 6px; padding: 10px; overflow-x: auto; font-size: 0.8rem; margin: 8px 0; border: 1px solid var(--border); }
+    .msg-body code { font-family: 'Courier New', monospace; font-size: 0.82rem; }
+    .msg-body p { margin: 4px 0; }
+    .msg-body img { max-width: 200px; border-radius: 8px; margin-top: 8px; }
+    .msg-meta { font-size: 0.68rem; color: var(--text2); margin-top: 4px; }
+    .msg.user .msg-meta { text-align: right; }
+
+    /* TYPING INDICATOR */
+    .typing-dot { display: inline-block; width: 6px; height: 6px; background: var(--text2); border-radius: 50%; margin: 0 2px; animation: bounce 1.2s infinite; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+
+    /* INPUT AREA */
+    #input-area {
+      border-top: 1px solid var(--border); padding: 16px 20px;
+      background: var(--surface); flex-shrink: 0;
+    }
+    #image-preview-row {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;
+    }
+    .img-thumb-wrap { position: relative; }
+    .img-thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+    .img-remove { position: absolute; top: -6px; right: -6px; background: var(--red); color: #fff; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    #input-row { display: flex; gap: 10px; align-items: flex-end; }
+    #user-input {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 10px; padding: 10px 14px;
+      font-size: 0.88rem; resize: none; height: 44px; max-height: 140px;
+      overflow-y: auto; outline: none; line-height: 1.5;
+      transition: border 0.2s;
+    }
+    #user-input:focus { border-color: var(--accent); }
+    #action-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    #char-count { font-size: 0.72rem; color: var(--text2); margin-left: auto; }
+
+    /* TOGGLE SIDEBAR BTN */
+    #toggle-sidebar { position: absolute; left: 300px; top: 50%; transform: translateY(-50%); z-index: 10; background: var(--surface); border: 1px solid var(--border); color: var(--text2); width: 20px; height: 40px; border-radius: 0 6px 6px 0; cursor: pointer; font-size: 0.7rem; transition: left 0.3s; }
+    #toggle-sidebar.collapsed { left: 0; }
+
+    /* WELCOME SCREEN */
+    #welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; color: var(--text2); padding: 20px; }
+    #welcome h2 { color: var(--accent2); font-size: 1.4rem; }
+    #welcome p { text-align: center; font-size: 0.88rem; max-width: 400px; line-height: 1.6; }
+    .welcome-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; max-width: 440px; width: 100%; }
+    .welcome-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 0.8rem; cursor: pointer; transition: border 0.2s; }
+    .welcome-card:hover { border-color: var(--accent); color: var(--text); }
+    .welcome-card .icon { font-size: 1.3rem; margin-bottom: 6px; }
+
+    /* SCROLLBAR */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* TOKEN USAGE */
+    #token-usage { font-size: 0.72rem; color: var(--text2); display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+    .token-badge { background: var(--surface2); padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); }
+
+    /* COPY BTN */
+    .copy-btn { background: transparent; border: 1px solid var(--border); color: var(--text2); font-size: 0.7rem; padding: 2px 7px; border-radius: 5px; cursor: pointer; margin-left: 8px; }
+    .copy-btn:hover { color: var(--accent2); border-color: var(--accent); }
+    .msg-toolbar { display: flex; align-items: center; margin-bottom: 4px; }
+
+    @media (max-width: 600px) {
+      #sidebar { width: 260px; position: absolute; z-index: 100; height: 100%; }
+      #toggle-sidebar { left: 260px; }
+      .msg { max-width: 95%; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>🧠 AI Math & Logic Solver</h1>
+  <span class="badge" id="model-badge">GPT-5.5</span>
+  <button class="btn-ghost" onclick="clearChat()" style="padding:5px 12px;font-size:0.78rem;">🗑 Clear</button>
+  <button class="btn-ghost" onclick="exportChat()" style="padding:5px 12px;font-size:0.78rem;">💾 Export</button>
+</div>
+
+<div id="main" style="position:relative;">
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div id="sidebar-inner">
+
+      <!-- API KEY -->
+      <div class="section-title">🔑 OpenAI API</div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="password" id="api-key" placeholder="sk-..." />
+      </div>
+      <button class="btn-primary" id="btn-connect" onclick="connectAPI()">Connect API</button>
+      <div id="api-status"></div>
+
+      <!-- MODEL -->
+      <div class="section-title">🤖 Model</div>
+      <div class="form-group">
+        <label>Model</label>
+        <select id="model-select" onchange="updateModelBadge()">
+          <optgroup label="🏆 Flagship (Terbaik)">
+            <option value="gpt-5.5">GPT-5.5 — Flagship Complex Reasoning</option>
+            <option value="gpt-5.5-2026-04-23">GPT-5.5 (2026-04-23)</option>
+          </optgroup>
+          <optgroup label="⚡ GPT-5.4 Series">
+            <option value="gpt-5.4" selected>GPT-5.4 — Professional</option>
+            <option value="gpt-5.4-2026-03-05">GPT-5.4 (2026-03-05)</option>
+            <option value="gpt-5.4-mini">GPT-5.4 Mini — Fast & Cheap</option>
+            <option value="gpt-5.4-nano">GPT-5.4 Nano — Ultra Fast</option>
+          </optgroup>
+          <optgroup label="🔬 Reasoning (o-series)">
+            <option value="o3">o3 — Deep Reasoning</option>
+            <option value="o3-mini">o3-mini</option>
+          </optgroup>
+          <optgroup label="📦 Legacy (masih tersedia via API)">
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4.1">GPT-4.1</option>
+            <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- GENERATION PARAMS -->
+      <div class="section-title">⚙️ Parameter Generasi</div>
+      <div class="form-group">
+        <label>Temperature <small style="color:var(--text2)">(kreativitas)</small></label>
+        <div class="range-row">
+          <input type="range" id="temperature" min="0" max="2" step="0.05" value="0.2" oninput="document.getElementById('temp-val').textContent=this.value"/>
+          <span class="range-val" id="temp-val">0.2</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Top-P <small style="color:var(--text2)">(nucleus sampling)</small></label>
+        <div class="range-row">
+          <input type="range" id="top-p" min="0" max="1" step="0.05" value="1" oninput="document.getElementById('topp-val').textContent=this.value"/>
+          <span class="range-val" id="topp-val">1</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Max Tokens</label>
+        <div class="range-row">
+          <input type="range" id="max-tokens" min="256" max="16384" step="256" value="4096" oninput="document.getElementById('tok-val').textContent=this.value"/>
+          <span class="range-val" id="tok-val">4096</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Frequency Penalty</label>
+        <div class="range-row">
+          <input type="range" id="freq-penalty" min="-2" max="2" step="0.1" value="0" oninput="document.getElementById('freq-val').textContent=this.value"/>
+          <span class="range-val" id="freq-val">0</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Presence Penalty</label>
+        <div class="range-row">
+          <input type="range" id="pres-penalty" min="-2" max="2" step="0.1" value="0" oninput="document.getElementById('pres-val').textContent=this.value"/>
+          <span class="range-val" id="pres-val">0</span>
+        </div>
+      </div>
+
+      <!-- RESPONSE FORMAT -->
+      <div class="section-title">📐 Format Respons</div>
+      <div class="form-group">
+        <label>Format Output</label>
+        <select id="response-format">
+          <option value="text">Plain Text</option>
+          <option value="markdown">Markdown</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Image Detail</label>
+        <select id="image-detail">
+          <option value="auto">Auto</option>
+          <option value="high">High (lebih akurat)</option>
+          <option value="low">Low (lebih cepat)</option>
+        </select>
+      </div>
+
+      <!-- SYSTEM PROMPT -->
+      <div class="section-title">📋 System Prompt</div>
+      <div class="preset-row">
+        <button class="preset-btn" onclick="setPreset('math')">📐 Matematika</button>
+        <button class="preset-btn" onclick="setPreset('logic')">🧩 Logika</button>
+        <button class="preset-btn" onclick="setPreset('lang')">📝 Bahasa</button>
+        <button class="preset-btn" onclick="setPreset('cs')">💻 CS/Coding</button>
+        <button class="preset-btn" onclick="setPreset('general')">🌐 Umum</button>
+      </div>
+      <textarea id="system-prompt">Kamu adalah asisten AI ahli matematika, logika, dan bahasa. Jawab langsung ke inti jawaban dengan format yang rapi. Untuk soal matematika: tampilkan langkah-langkah solusi secara sistematis. Untuk soal logika: berikan penalaran yang jelas. Untuk soal bahasa: berikan analisis yang tepat. Gunakan LaTeX untuk ekspresi matematika (gunakan $...$ untuk inline dan $$...$$ untuk block). Selalu berikan jawaban akhir yang tegas dan jelas.</textarea>
+
+      <!-- HISTORY -->
+      <div class="section-title">🗂 Riwayat Konteks</div>
+      <div class="form-group">
+        <label>Jumlah Pesan Konteks (history)</label>
+        <div class="range-row">
+          <input type="range" id="history-len" min="0" max="20" step="1" value="6" oninput="document.getElementById('hist-val').textContent=this.value"/>
+          <span class="range-val" id="hist-val">6</span>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;display:flex;gap:8px;">
+        <button class="btn-ghost" onclick="resetConfig()" style="flex:1">↩ Reset Config</button>
+        <button class="btn-danger" onclick="clearChat()" style="flex:1">🗑 Clear Chat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOGGLE -->
+  <button id="toggle-sidebar" onclick="toggleSidebar()" title="Toggle sidebar">‹</button>
+
+  <!-- CHAT AREA -->
+  <div id="chat-area">
+    <div id="messages">
+      <div id="welcome">
+        <div style="font-size:2.5rem">🧠</div>
+        <h2>AI Math & Logic Solver</h2>
+        <p>Upload foto soal matematika, logika, atau bahasa — AI akan menganalisis dan menjawab langsung ke inti solusi.</p>
+        <div class="welcome-grid">
+          <div class="welcome-card" onclick="quickPrompt('Selesaikan persamaan kuadrat: x² - 5x + 6 = 0')">
+            <div class="icon">📐</div>
+            <strong>Matematika</strong><br>Soal persamaan, kalkulus, aljabar
+          </div>
+          <div class="welcome-card" onclick="quickPrompt('Buktikan bahwa √2 adalah bilangan irasional')">
+            <div class="icon">🔢</div>
+            <strong>Pembuktian</strong><br>Proof matematika formal
+          </div>
+          <div class="welcome-card" onclick="quickPrompt('Analisis silogisme: Semua manusia fana. Socrates manusia. Kesimpulan?')">
+            <div class="icon">🧩</div>
+            <strong>Logika</strong><br>Silogisme, inferensi, set theory
+          </div>
+          <div class="welcome-card" onclick="quickPrompt('Perbaiki dan analisis kalimat: The students was went to school yesterday')">
+            <div class="icon">📝</div>
+            <strong>Bahasa</strong><br>Grammar, analisis teks, terjemahan
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="token-usage" style="padding:0 20px 6px;display:none;"></div>
+
+    <!-- IMAGE PREVIEWS -->
+    <div id="input-area">
+      <div id="image-preview-row"></div>
+      <div id="input-row">
+        <button type="button" class="btn-ghost" title="Ambil foto dari kamera" onclick="openCamera()" style="padding:9px 11px;">📷</button>
+        <button type="button" class="btn-ghost" title="Pilih gambar dari galeri" onclick="openGallery()" style="padding:9px 11px;">🖼</button>
+        <input type="file" id="gallery-upload" accept="image/*" multiple style="display:none" onchange="handleGalleryUpload(event)"/>
+        <input type="file" id="camera-upload" accept="image/*" capture="environment" style="display:none" onchange="handleCameraUpload(event)"/>
+        <textarea id="user-input" placeholder="Ketik soal atau tempel teks/gambar... (Shift+Enter = baris baru, Enter = kirim)" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="btn-primary" onclick="sendMessage()" id="send-btn" style="height:44px;padding:0 18px;">Kirim ▶</button>
+      </div>
+      <div id="action-row">
+        <span style="font-size:0.75rem;color:var(--text2)">📎 Drag & drop / paste gambar ke kolom input · Maks 10 gambar</span>
+        <span id="char-count" style="display:none"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+
+// ── STATE ──────────────────────────────────────────
+let chatHistory = [];
+let pendingImages = []; // [{base64, mime, name}]
+let apiConnected = false;
+const MAX_IMAGES = 10;
+
+const STORAGE_KEY = 'ai_math_solver_config';
+
+const FIELD_IDS = [
+  'api-key',
+  'model-select',
+  'temperature',
+  'top-p',
+  'max-tokens',
+  'freq-penalty',
+  'pres-penalty',
+  'response-format',
+  'image-detail',
+  'system-prompt',
+  'history-len'
+];
+
+const DEFAULTS = {
+  'api-key': '',
+  'model-select': 'gpt-5.4',
+  'temperature': '0.2',
+  'top-p': '1',
+  'max-tokens': '4096',
+  'freq-penalty': '0',
+  'pres-penalty': '0',
+  'response-format': 'text',
+  'image-detail': 'auto',
+  'system-prompt': `Kamu adalah asisten AI ahli matematika, logika, dan bahasa. Jawab langsung ke inti jawaban dengan format yang rapi. Untuk soal matematika: tampilkan langkah-langkah solusi secara sistematis. Untuk soal logika: berikan penalaran yang jelas. Untuk soal bahasa: berikan analisis yang tepat. Gunakan LaTeX untuk ekspresi matematika (gunakan $...$ untuk inline dan $$...$$ untuk block). Selalu berikan jawaban akhir yang tegas dan jelas.`,
+  'history-len': '6'
+};
+
+// ── PRESETS ─────────────────────────────────────────
+const PRESETS = {
+  math: `Kamu adalah ahli matematika tingkat lanjut. Jawab soal matematika dengan langkah-langkah yang sistematis, jelas, dan terstruktur. Tampilkan setiap langkah penyelesaian. Gunakan notasi LaTeX untuk ekspresi matematika. Berikan jawaban akhir yang tegas dalam kotak atau bold. Efisien dan langsung ke inti.`,
+  logic: `Kamu adalah ahli logika formal dan informal. Analisis argumen, silogisme, proposisi, dan inferensi dengan tepat. Identifikasi premis dan konklusi. Berikan justifikasi logis yang ketat. Langsung ke inti tanpa basa-basi berlebihan.`,
+  lang: `Kamu adalah ahli linguistik dan bahasa. Bantu analisis grammar, sintaksis, semantik, dan terjemahan dengan akurat. Jelaskan aturan kebahasaan yang relevan. Berikan koreksi beserta alasannya. Ringkas namun komprehensif.`,
+  cs: `Kamu adalah ahli computer science dan pemrograman. Jawab pertanyaan tentang algoritma, kompleksitas, kode, dan teori CS dengan presisi. Sertakan kode contoh bila relevan. Langsung ke solusi.`,
+  general: `Kamu adalah asisten AI yang cerdas, akurat, dan efisien. Jawab pertanyaan langsung ke inti. Hindari basa-basi. Gunakan format yang rapi dan mudah dibaca.`
+};
+
+function setPreset(key) {
+  document.getElementById('system-prompt').value = PRESETS[key] || DEFAULTS['system-prompt'];
+  saveConfig();
+}
+
+function setStatus(msg, type) {
+  const el = document.getElementById('api-status');
+  el.textContent = msg;
+  el.className = type === 'ok' ? 'status-ok' : type === 'err' ? 'status-err' : '';
+}
+
+function syncRangeLabels() {
+  document.getElementById('temp-val').textContent = document.getElementById('temperature').value;
+  document.getElementById('topp-val').textContent = document.getElementById('top-p').value;
+  document.getElementById('tok-val').textContent = document.getElementById('max-tokens').value;
+  document.getElementById('freq-val').textContent = document.getElementById('freq-penalty').value;
+  document.getElementById('pres-val').textContent = document.getElementById('pres-penalty').value;
+  document.getElementById('hist-val').textContent = document.getElementById('history-len').value;
+}
+
+function updateModelBadge() {
+  const select = document.getElementById('model-select');
+  const option = select.options[select.selectedIndex];
+  const label = option ? (option.textContent || select.value) : select.value;
+  document.getElementById('model-badge').textContent = label.replace(/\s+—.*$/, '').substring(0, 28);
+}
+
+function setSelectValue(id, value) {
+  const el = document.getElementById(id);
+  const exists = Array.from(el.options).some(opt => opt.value === value);
+  el.value = exists ? value : DEFAULTS[id];
+}
+
+function loadConfig() {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {};
+  } catch (_) {
+    saved = {};
+  }
+
+  for (const id of FIELD_IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const value = saved[id] ?? DEFAULTS[id];
+    if (el.tagName === 'SELECT') {
+      setSelectValue(id, value);
+    } else {
+      el.value = value;
+    }
+  }
+
+  syncRangeLabels();
+  updateModelBadge();
+  const key = document.getElementById('api-key').value.trim();
+  if (key) {
+    setStatus('API key tersimpan', '');
+  }
+}
+
+function saveConfig() {
+  const data = {};
+  for (const id of FIELD_IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    data[id] = el.value;
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function bindAutosave() {
+  FIELD_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const handler = () => {
+      if (id !== 'api-key') saveConfig();
+      if (id === 'model-select') updateModelBadge();
+      if (id === 'temperature' || id === 'top-p' || id === 'max-tokens' || id === 'freq-penalty' || id === 'pres-penalty' || id === 'history-len') {
+        syncRangeLabels();
+      }
+    };
+    el.addEventListener('input', handler);
+    el.addEventListener('change', handler);
+  });
+}
+
+function getTokenParam(model, maxTok) {
+  // GPT-5.x / o-series use max_completion_tokens; older chat models use max_tokens.
+  if (/^(gpt-5|o\d)/i.test(model)) {
+    return { max_completion_tokens: maxTok };
+  }
+  return { max_tokens: maxTok };
+}
+
+function setStorageAndConnectStatus(key) {
+  try {
+    localStorage.setItem('oai_key', key);
+  } catch (_) {}
+  apiConnected = true;
+}
+
+async function connectAPI() {
+  const key = document.getElementById('api-key').value.trim();
+  if (!key) { setStatus('Masukkan API key terlebih dahulu', 'err'); return; }
+
+  setStatus('Menghubungkan...', '');
+  saveConfig();
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/models', {
+      headers: { 'Authorization': 'Bearer ' + key }
+    });
+
+    let payload = null;
+    try { payload = await res.json(); } catch (_) {}
+
+    if (res.ok) {
+      setStorageAndConnectStatus(key);
+      setStatus('✓ Terhubung', 'ok');
+      return;
+    }
+
+    const message = payload?.error?.message || payload?.message || `HTTP ${res.status}`;
+    apiConnected = false;
+    setStatus('✗ ' + message, 'err');
+  } catch (e) {
+    apiConnected = false;
+    setStatus('✗ Network error', 'err');
+  }
+}
+
+// ── IMAGES ──────────────────────────────────────────
+function previewImages(event) {
+  const files = event.target.files;
+  handleImageFiles(files);
+  event.target.value = '';
+}
+
+function handleGalleryUpload(event) {
+  handleImageFiles(event.target.files);
+  event.target.value = '';
+}
+
+function handleCameraUpload(event) {
+  handleImageFiles(event.target.files);
+  event.target.value = '';
+}
+
+function openGallery() {
+  document.getElementById('gallery-upload').click();
+}
+
+function openCamera() {
+  document.getElementById('camera-upload').click();
+}
+
+function handleImageFiles(files) {
+  const list = Array.from(files || []).filter(file => file.type && file.type.startsWith('image/'));
+  if (!list.length) return;
+
+  const slotsLeft = Math.max(0, MAX_IMAGES - pendingImages.length);
+  if (slotsLeft <= 0) {
+    setStatus(`Maksimal ${MAX_IMAGES} gambar sudah tercapai`, 'err');
+    return;
+  }
+
+  const accepted = list.slice(0, slotsLeft);
+  const skipped = list.length - accepted.length;
+
+  let remaining = accepted.length;
+  accepted.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      const parts = String(dataUrl).split(',');
+      const b64 = parts[1] || '';
+      pendingImages.push({ base64: b64, mime: file.type, name: file.name || 'image', src: dataUrl });
+      renderImagePreviews();
+      remaining -= 1;
+      if (remaining === 0 && skipped > 0) {
+        setStatus(`Hanya ${accepted.length} gambar ditambahkan. Batas maksimal ${MAX_IMAGES}.`, 'err');
+      } else if (remaining === 0) {
+        setStatus('', '');
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderImagePreviews() {
+  const row = document.getElementById('image-preview-row');
+  row.innerHTML = '';
+  pendingImages.slice(0, MAX_IMAGES).forEach((img, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'img-thumb-wrap';
+    wrap.innerHTML = `<img class="img-thumb" src="${img.src}" title="${img.name}"/>
+      <button class="img-remove" type="button" onclick="removeImage(${i})">✕</button>`;
+    row.appendChild(wrap);
+  });
+}
+
+function removeImage(i) {
+  pendingImages.splice(i, 1);
+  renderImagePreviews();
+}
+
+function pasteImageFromClipboard(item) {
+  return new Promise((resolve) => {
+    const file = item.getAsFile();
+    if (!file) return resolve(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      const b64 = String(dataUrl).split(',')[1] || '';
+      resolve({ base64: b64, mime: file.type || 'image/png', name: file.name || 'clipboard-image', src: dataUrl });
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handlePaste(event) {
+  const items = Array.from(event.clipboardData?.items || []);
+  const hasImage = items.some(item => item.kind === 'file' && item.type.startsWith('image/'));
+  const text = event.clipboardData?.getData('text/plain') || '';
+
+  if (!hasImage && !text) return;
+
+  // If clipboard contains images, prevent default paste into textarea.
+  if (hasImage) event.preventDefault();
+
+  const imageItems = items.filter(item => item.kind === 'file' && item.type.startsWith('image/'));
+  if (imageItems.length) {
+    const slotsLeft = Math.max(0, MAX_IMAGES - pendingImages.length);
+    if (slotsLeft <= 0) {
+      setStatus(`Maksimal ${MAX_IMAGES} gambar sudah tercapai`, 'err');
+    } else {
+      const selected = imageItems.slice(0, slotsLeft);
+      const images = await Promise.all(selected.map(pasteImageFromClipboard));
+      const validImages = images.filter(Boolean);
+      pendingImages.push(...validImages);
+      renderImagePreviews();
+      if (imageItems.length > slotsLeft) {
+        setStatus(`Hanya ${slotsLeft} gambar ditempel. Batas maksimal ${MAX_IMAGES}.`, 'err');
+      } else {
+        setStatus('', '');
+      }
+    }
+  }
+
+  if (text) {
+    const textarea = event.target;
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? textarea.value.length;
+    const before = textarea.value.slice(0, start);
+    const after = textarea.value.slice(end);
+    textarea.value = before + text + after;
+    const pos = start + text.length;
+    textarea.setSelectionRange(pos, pos);
+    autoResize(textarea);
+  }
+}
+
+// Drag & drop + initial load
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('user-input');
+
+  input.addEventListener('dragover', e => {
+    e.preventDefault();
+    input.style.borderColor = 'var(--accent)';
+  });
+
+  input.addEventListener('dragleave', () => {
+    input.style.borderColor = '';
+  });
+
+  input.addEventListener('drop', e => {
+    e.preventDefault();
+    input.style.borderColor = '';
+    handleImageFiles(e.dataTransfer.files);
+  });
+  input.addEventListener('paste', handlePaste);
+
+  loadConfig();
+  bindAutosave();
+
+  const savedKey = localStorage.getItem('oai_key');
+  if (savedKey && !document.getElementById('api-key').value.trim()) {
+    document.getElementById('api-key').value = savedKey;
+    setStatus('API key tersimpan', '');
+  }
+
+  syncRangeLabels();
+  updateModelBadge();
+});
+
+// ── SEND MESSAGE ────────────────────────────────────
+async function sendMessage() {
+  const key = document.getElementById('api-key').value.trim();
+  if (!key) { alert('Masukkan API key dan klik "Connect API" terlebih dahulu!'); return; }
+
+  const text = document.getElementById('user-input').value.trim();
+  if (!text && pendingImages.length === 0) return;
+
+  saveConfig();
+
+  const welcome = document.getElementById('welcome');
+  if (welcome) welcome.remove();
+
+  let content = [];
+  if (text) content.push({ type: 'text', text: text });
+
+  const detail = document.getElementById('image-detail').value;
+  pendingImages.forEach(img => {
+    content.push({ type: 'image_url', image_url: { url: `data:${img.mime};base64,${img.base64}`, detail: detail } });
+  });
+
+  appendMessage('user', text || (pendingImages.length ? '[Gambar]' : ''), pendingImages.map(i => i.src));
+  pendingImages = [];
+  renderImagePreviews();
+
+  const input = document.getElementById('user-input');
+  input.value = '';
+  autoResize(input);
+
+  chatHistory.push({ role: 'user', content: content });
+
+  const typingId = 'typing-' + Date.now();
+  appendTyping(typingId);
+
+  const model = document.getElementById('model-select').value;
+  const temp = parseFloat(document.getElementById('temperature').value);
+  const topp = parseFloat(document.getElementById('top-p').value);
+  const maxTok = parseInt(document.getElementById('max-tokens').value, 10);
+  const freqP = parseFloat(document.getElementById('freq-penalty').value);
+  const presP = parseFloat(document.getElementById('pres-penalty').value);
+  const sysPrompt = document.getElementById('system-prompt').value.trim();
+  const histLen = parseInt(document.getElementById('history-len').value, 10);
+
+  const messages = [];
+  if (sysPrompt) messages.push({ role: 'system', content: sysPrompt });
+
+  const histSlice = histLen > 0 ? chatHistory.slice(-histLen * 2) : [];
+  messages.push(...histSlice);
+
+  const body = {
+    model: model,
+    messages: messages,
+    temperature: temp,
+    top_p: topp,
+    frequency_penalty: freqP,
+    presence_penalty: presP,
+    ...getTokenParam(model, maxTok)
+  };
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + key
+      },
+      body: JSON.stringify(body)
+    });
+
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (_) {
+      data = null;
+    }
+
+    removeTyping(typingId);
+
+    if (!res.ok || data?.error) {
+      const message = data?.error?.message || `HTTP ${res.status}`;
+      appendMessage('assistant', '⚠️ Error: ' + message);
+      chatHistory.pop();
+      return;
+    }
+
+    const reply = data?.choices?.[0]?.message?.content ?? '(Tidak ada respons)';
+    chatHistory.push({ role: 'assistant', content: reply });
+    appendMessage('assistant', reply);
+
+    if (data?.usage) showTokenUsage(data.usage);
+
+  } catch (e) {
+    removeTyping(typingId);
+    appendMessage('assistant', '⚠️ Network error: ' + e.message);
+    chatHistory.pop();
+  }
+}
+
+// ── RENDER MESSAGES ─────────────────────────────────
+function appendMessage(role, text, images = []) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+
+  const avatar = role === 'user' ? '👤' : '🤖';
+  const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const formatted = role === 'assistant' ? formatContent(text) : escapeHtml(text);
+  const imagesHtml = images.map(src => `<img src="${src}" class="msg-body img" style="max-width:180px;border-radius:8px;margin-top:6px;display:block;">`).join('');
+
+  div.innerHTML = `
+    <div class="msg-avatar">${avatar}</div>
+    <div>
+      <div class="msg-toolbar">
+        ${role === 'assistant' ? `<button class="copy-btn" type="button" onclick="copyMsg(this)">📋 Copy</button>` : ''}
+      </div>
+      <div class="msg-body">${imagesHtml}${formatted}</div>
+      <div class="msg-meta">${time}</div>
+    </div>`;
+
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendTyping(id) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg assistant';
+  div.id = id;
+  div.innerHTML = `<div class="msg-avatar">🤖</div>
+    <div class="msg-body">
+      <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+    </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function removeTyping(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function formatContent(text) {
+  if (!text) return '';
+  text = String(text);
+
+  // code blocks
+  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  // inline code
+  text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // bold
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // italic
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // newlines
+  text = text.replace(/\n/g, '<br>');
+
+  return text;
+}
+
+function escapeHtml(t) {
+  return String(t)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>');
+}
+
+function copyMsg(btn) {
+  const bubble = btn.closest('.msg');
+  const body = bubble ? bubble.querySelector('.msg-body') : null;
+  if (!body) return;
+
+  navigator.clipboard.writeText(body.innerText).then(() => {
+    btn.textContent = '✓ Copied';
+    setTimeout(() => btn.textContent = '📋 Copy', 1500);
+  });
+}
+
+// ── TOKEN USAGE ─────────────────────────────────────
+function showTokenUsage(usage) {
+  const el = document.getElementById('token-usage');
+  el.style.display = 'flex';
+  el.innerHTML = `
+    <span class="token-badge">📥 Input: ${usage.prompt_tokens}</span>
+    <span class="token-badge">📤 Output: ${usage.completion_tokens}</span>
+    <span class="token-badge">🔢 Total: ${usage.total_tokens}</span>
+  `;
+}
+
+// ── HELPERS ──────────────────────────────────────────
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = '44px';
+  el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+
+function quickPrompt(text) {
+  const input = document.getElementById('user-input');
+  input.value = text;
+  input.focus();
+  autoResize(input);
+}
+
+function clearChat() {
+  chatHistory = [];
+  pendingImages = [];
+  renderImagePreviews();
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = '';
+  document.getElementById('token-usage').style.display = 'none';
+
+  const w = document.createElement('div');
+  w.id = 'welcome';
+  w.innerHTML = `<div style="font-size:2.5rem">🧠</div><h2>AI Math & Logic Solver</h2><p>Upload foto soal matematika, logika, atau bahasa — AI akan menganalisis dan menjawab langsung ke inti solusi.</p>`;
+  msgs.appendChild(w);
+}
+
+function exportChat() {
+  const lines = chatHistory.map(m => `[${m.role.toUpperCase()}]\n${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}\n`);
+  const blob = new Blob([lines.join('\n---\n')], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'chat-export-' + Date.now() + '.txt';
+  a.click();
+}
+
+function resetConfig() {
+  for (const [id, value] of Object.entries(DEFAULTS)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.value = value;
+  }
+  syncRangeLabels();
+  updateModelBadge();
+  saveConfig();
+}
+
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const btn = document.getElementById('toggle-sidebar');
+  sb.classList.toggle('collapsed');
+  btn.classList.toggle('collapsed');
+  btn.textContent = sb.classList.contains('collapsed') ? '›' : '‹';
+}
+
+</script>
+</body>
+</html>
