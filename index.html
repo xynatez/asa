@@ -337,15 +337,15 @@
     <div id="input-area">
       <div id="image-preview-row"></div>
       <div id="input-row">
-        <label for="file-upload" title="Upload gambar soal">
-          <span style="cursor:pointer;font-size:1.4rem;padding:6px;color:var(--text2);transition:color 0.15s;" onmouseover="this.style.color='#a78bfa'" onmouseout="this.style.color='var(--text2)'">📎</span>
-        </label>
-        <input type="file" id="file-upload" accept="image/*" multiple style="display:none" onchange="previewImages(event)"/>
-        <textarea id="user-input" placeholder="Ketik soal atau pertanyaan... (Shift+Enter = baris baru, Enter = kirim)" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button type="button" class="btn-ghost" title="Ambil foto dari kamera" onclick="openCamera()" style="padding:9px 11px;">📷</button>
+        <button type="button" class="btn-ghost" title="Pilih gambar dari galeri" onclick="openGallery()" style="padding:9px 11px;">🖼</button>
+        <input type="file" id="gallery-upload" accept="image/*" multiple style="display:none" onchange="handleGalleryUpload(event)"/>
+        <input type="file" id="camera-upload" accept="image/*" capture="environment" style="display:none" onchange="handleCameraUpload(event)"/>
+        <textarea id="user-input" placeholder="Ketik soal atau tempel teks/gambar... (Shift+Enter = baris baru, Enter = kirim)" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
         <button class="btn-primary" onclick="sendMessage()" id="send-btn" style="height:44px;padding:0 18px;">Kirim ▶</button>
       </div>
       <div id="action-row">
-        <span style="font-size:0.75rem;color:var(--text2)">📎 Drag & drop gambar ke kolom input</span>
+        <span style="font-size:0.75rem;color:var(--text2)">📎 Drag & drop / paste gambar ke kolom input · Maks 10 gambar</span>
         <span id="char-count" style="display:none"></span>
       </div>
     </div>
@@ -358,6 +358,7 @@
 let chatHistory = [];
 let pendingImages = []; // [{base64, mime, name}]
 let apiConnected = false;
+const MAX_IMAGES = 10;
 
 const STORAGE_KEY = 'ai_math_solver_config';
 
@@ -537,19 +538,56 @@ async function connectAPI() {
 // ── IMAGES ──────────────────────────────────────────
 function previewImages(event) {
   const files = event.target.files;
-  addImageFiles(files);
+  handleImageFiles(files);
   event.target.value = '';
 }
 
-function addImageFiles(files) {
-  Array.from(files).forEach(file => {
-    if (!file.type.startsWith('image/')) return;
+function handleGalleryUpload(event) {
+  handleImageFiles(event.target.files);
+  event.target.value = '';
+}
+
+function handleCameraUpload(event) {
+  handleImageFiles(event.target.files);
+  event.target.value = '';
+}
+
+function openGallery() {
+  document.getElementById('gallery-upload').click();
+}
+
+function openCamera() {
+  document.getElementById('camera-upload').click();
+}
+
+function handleImageFiles(files) {
+  const list = Array.from(files || []).filter(file => file.type && file.type.startsWith('image/'));
+  if (!list.length) return;
+
+  const slotsLeft = Math.max(0, MAX_IMAGES - pendingImages.length);
+  if (slotsLeft <= 0) {
+    setStatus(`Maksimal ${MAX_IMAGES} gambar sudah tercapai`, 'err');
+    return;
+  }
+
+  const accepted = list.slice(0, slotsLeft);
+  const skipped = list.length - accepted.length;
+
+  let remaining = accepted.length;
+  accepted.forEach(file => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target.result;
-      const b64 = String(dataUrl).split(',')[1] || '';
-      pendingImages.push({ base64: b64, mime: file.type, name: file.name, src: dataUrl });
+      const parts = String(dataUrl).split(',');
+      const b64 = parts[1] || '';
+      pendingImages.push({ base64: b64, mime: file.type, name: file.name || 'image', src: dataUrl });
       renderImagePreviews();
+      remaining -= 1;
+      if (remaining === 0 && skipped > 0) {
+        setStatus(`Hanya ${accepted.length} gambar ditambahkan. Batas maksimal ${MAX_IMAGES}.`, 'err');
+      } else if (remaining === 0) {
+        setStatus('', '');
+      }
     };
     reader.readAsDataURL(file);
   });
@@ -558,7 +596,7 @@ function addImageFiles(files) {
 function renderImagePreviews() {
   const row = document.getElementById('image-preview-row');
   row.innerHTML = '';
-  pendingImages.forEach((img, i) => {
+  pendingImages.slice(0, MAX_IMAGES).forEach((img, i) => {
     const wrap = document.createElement('div');
     wrap.className = 'img-thumb-wrap';
     wrap.innerHTML = `<img class="img-thumb" src="${img.src}" title="${img.name}"/>
@@ -570,6 +608,63 @@ function renderImagePreviews() {
 function removeImage(i) {
   pendingImages.splice(i, 1);
   renderImagePreviews();
+}
+
+function pasteImageFromClipboard(item) {
+  return new Promise((resolve) => {
+    const file = item.getAsFile();
+    if (!file) return resolve(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      const b64 = String(dataUrl).split(',')[1] || '';
+      resolve({ base64: b64, mime: file.type || 'image/png', name: file.name || 'clipboard-image', src: dataUrl });
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handlePaste(event) {
+  const items = Array.from(event.clipboardData?.items || []);
+  const hasImage = items.some(item => item.kind === 'file' && item.type.startsWith('image/'));
+  const text = event.clipboardData?.getData('text/plain') || '';
+
+  if (!hasImage && !text) return;
+
+  // If clipboard contains images, prevent default paste into textarea.
+  if (hasImage) event.preventDefault();
+
+  const imageItems = items.filter(item => item.kind === 'file' && item.type.startsWith('image/'));
+  if (imageItems.length) {
+    const slotsLeft = Math.max(0, MAX_IMAGES - pendingImages.length);
+    if (slotsLeft <= 0) {
+      setStatus(`Maksimal ${MAX_IMAGES} gambar sudah tercapai`, 'err');
+    } else {
+      const selected = imageItems.slice(0, slotsLeft);
+      const images = await Promise.all(selected.map(pasteImageFromClipboard));
+      const validImages = images.filter(Boolean);
+      pendingImages.push(...validImages);
+      renderImagePreviews();
+      if (imageItems.length > slotsLeft) {
+        setStatus(`Hanya ${slotsLeft} gambar ditempel. Batas maksimal ${MAX_IMAGES}.`, 'err');
+      } else {
+        setStatus('', '');
+      }
+    }
+  }
+
+  if (text) {
+    const textarea = event.target;
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? textarea.value.length;
+    const before = textarea.value.slice(0, start);
+    const after = textarea.value.slice(end);
+    textarea.value = before + text + after;
+    const pos = start + text.length;
+    textarea.setSelectionRange(pos, pos);
+    autoResize(textarea);
+  }
 }
 
 // Drag & drop + initial load
@@ -588,8 +683,9 @@ document.addEventListener('DOMContentLoaded', () => {
   input.addEventListener('drop', e => {
     e.preventDefault();
     input.style.borderColor = '';
-    addImageFiles(e.dataTransfer.files);
+    handleImageFiles(e.dataTransfer.files);
   });
+  input.addEventListener('paste', handlePaste);
 
   loadConfig();
   bindAutosave();
